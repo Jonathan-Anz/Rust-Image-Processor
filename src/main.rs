@@ -1,23 +1,14 @@
-use image::{self, DynamicImage, GenericImageView, ImageFormat};
+use image::{self, DynamicImage, ImageFormat};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn main() {
 
     let mut current_image: Option<DynamicImage> = None;
-    //let mut image_path: Option<String> = None;
     let mut image_path = PathBuf::from("None");
 
     // Main loop
     loop {
-
-        // Get the path as a string
-        // let path_string = match &image_path {
-        //     Some(path) => path.to_string_lossy().into_owned(),
-        //     None => String::from("None"),
-        // };
-
-        //let path = Some()
 
         println!("\nRust Image Processor [Select an option]");
         println!("Current Image: {}", image_path.display());
@@ -36,10 +27,20 @@ fn main() {
         match choice {
 
             // Call functions for each action
+            // Save the image after making a change
             "1" => upload_image(&mut current_image, &mut image_path),
-            "2" => break,
-            "3" => break,
-            "4" => break,
+            "2" => {
+                rescale_image(&mut current_image);
+                save_image(&mut current_image, &mut image_path);
+            },
+            "3" => {
+                blur_image(&mut current_image);
+                save_image(&mut current_image, &mut image_path);
+            },
+            "4" => {
+                convert_grayscale(&mut current_image);
+                save_image(&mut current_image, &mut image_path);
+            },
             "5" => {
                 println!("\nExiting...\n");
                 break;
@@ -47,13 +48,10 @@ fn main() {
             _ => println!("\nInvalid option. Please try again."),
         }
 
-        save_image(&mut current_image, &mut image_path);
-
     }
 
 }
 
-// Uploads an image
 fn upload_image(image: &mut Option<DynamicImage>, path: &mut PathBuf) {
 
     print!("\nEnter an image file path: ");
@@ -66,11 +64,11 @@ fn upload_image(image: &mut Option<DynamicImage>, path: &mut PathBuf) {
 
     match image::open(&new_path) {
         Ok(img) => {
-            println!("Image loaded successfully.");
+            println!("\nImage loaded successfully.");
             *image = Some(img);
             *path = new_path;
         }
-        Err(e) => println!("Failed to open image: {}", e),
+        Err(e) => println!("\nFailed to open image: {}", e),
     }
 }
 
@@ -99,5 +97,56 @@ fn save_image(image: &mut Option<DynamicImage>, path: &mut PathBuf) {
         else {
             println!("Output image saved to {}.", output_path.as_path().display());
         }
+    }
+}
+
+fn rescale_image(image: &mut Option<DynamicImage>) {
+    
+    if let Some(img) = image {
+        
+        print!("\nEnter new width: ");
+        io::stdout().flush().unwrap();
+        let mut width = String::new();
+        io::stdin().read_line(&mut width).unwrap();
+        let width: u32 = width.trim().parse().unwrap_or(img.width());
+
+        print!("Enter new height: ");
+        io::stdout().flush().unwrap();
+        let mut height = String::new();
+        io::stdin().read_line(&mut height).unwrap();
+        let height: u32 = height.trim().parse().unwrap_or(img.height());
+
+        *image = Some(img.resize_exact(width, height, image::imageops::FilterType::Lanczos3));
+        println!("\nImage resized.");
+    } else {
+        println!("\nNo image loaded.");
+    }
+}
+
+fn blur_image(image: &mut Option<DynamicImage>) {
+
+    if let Some(img) = image {
+        
+        print!("\nEnter blur sigma (Ex: 2.0): ");
+        io::stdout().flush().unwrap();
+        let mut sigma = String::new();
+        io::stdin().read_line(&mut sigma).unwrap();
+        let sigma: f32 = sigma.trim().parse().unwrap_or(2.0);
+        
+        *image = Some(img.blur(sigma));
+        println!("\nImage blurred.");
+    } else {
+        println!("\nNo image loaded.");
+    }
+}
+
+fn convert_grayscale(image: &mut Option<DynamicImage>) {
+
+    if let Some(img) = image {
+        
+        *image = Some(img.grayscale());
+        println!("\nImage converted to grayscale.");
+    } else {
+        println!("\nNo image loaded.");
     }
 }
