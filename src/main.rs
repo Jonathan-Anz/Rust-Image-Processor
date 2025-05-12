@@ -23,6 +23,8 @@ enum ImageOperation {
     Resize,
     HueRotate,
     Blur,
+    FlipHorizontal,
+    FlipVertical,
     Grayscale,
     Brightness,
     Contrast,
@@ -91,6 +93,8 @@ impl eframe::App for ImageProcessor {
                     ),
                     ImageOperation::HueRotate => img.huerotate(self.hue_rotation),
                     ImageOperation::Blur => img.blur(self.blur_sigma),
+                    ImageOperation::FlipHorizontal => img.fliph(),
+                    ImageOperation::FlipVertical => img.flipv(),
                     ImageOperation::Grayscale => img.grayscale(),
                     ImageOperation::Brightness => img.brighten(self.brightness),
                     ImageOperation::Contrast => img.adjust_contrast(self.contrast),
@@ -209,6 +213,16 @@ impl eframe::App for ImageProcessor {
                     ui.add(egui::DragValue::new(&mut self.blur_sigma).speed(0.1));
                     if ui.button("Apply Blur").clicked() {
                         self.pending_operation = Some(ImageOperation::Blur);
+                    }
+                });
+
+                // Flip controls
+                ui.horizontal(|ui| {
+                    if ui.button("Flip Horizontal").clicked() {
+                        self.pending_operation = Some(ImageOperation::FlipHorizontal);
+                    }
+                    if ui.button("Flip Vertical").clicked() {
+                        self.pending_operation = Some(ImageOperation::FlipVertical);
                     }
                 });
 
