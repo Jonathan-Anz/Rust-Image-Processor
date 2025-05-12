@@ -8,6 +8,14 @@ pub struct ImageProcessor {
     blur_sigma: f32,
     resize_width: u32,
     resize_height: u32,
+    pending_operation: Option<ImageOperation>,
+}
+
+#[derive(Debug)]
+enum ImageOperation {
+    Resize,
+    Blur,
+    Grayscale,
 }
 
 impl Default for ImageProcessor {
@@ -18,12 +26,28 @@ impl Default for ImageProcessor {
             blur_sigma: 2.0,
             resize_width: 100,
             resize_height: 100,
+            pending_operation: None,
         }
     }
 }
 
 impl eframe::App for ImageProcessor {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process any pending operations first
+        if let Some(op) = self.pending_operation.take() {
+            if let Some(img) = self.image.take() {
+                self.image = Some(match op {
+                    ImageOperation::Resize => img.resize_exact(
+                        self.resize_width,
+                        self.resize_height,
+                        image::imageops::FilterType::Lanczos3,
+                    ),
+                    ImageOperation::Blur => img.blur(self.blur_sigma),
+                    ImageOperation::Grayscale => img.grayscale(),
+                });
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Rust Image Processor");
 
@@ -42,50 +66,32 @@ impl eframe::App for ImageProcessor {
                 }
             }
 
-            // Store the image in a local variable to avoid borrowing issues
-            let current_image = self.image.clone();
-            
-            if let Some(img) = current_image {
+            if let Some(_img) = &self.image {
                 ui.label("Image loaded.");
                 
                 // Resize controls
-                let mut resize_clicked = false;
-                let (mut new_width, mut new_height) = (self.resize_width, self.resize_height);
                 ui.horizontal(|ui| {
                     ui.label("Width:");
-                    ui.add(egui::DragValue::new(&mut new_width).speed(1));
+                    ui.add(egui::DragValue::new(&mut self.resize_width).speed(1));
                     ui.label("Height:");
-                    ui.add(egui::DragValue::new(&mut new_height).speed(1));
-                    resize_clicked = ui.button("Resize").clicked();
+                    ui.add(egui::DragValue::new(&mut self.resize_height).speed(1));
+                    if ui.button("Resize").clicked() {
+                        self.pending_operation = Some(ImageOperation::Resize);
+                    }
                 });
-                
-                if resize_clicked {
-                    self.resize_width = new_width;
-                    self.resize_height = new_height;
-                    self.image = Some(img.resize_exact(
-                        self.resize_width,
-                        self.resize_height,
-                        image::imageops::FilterType::Lanczos3,
-                    ));
-                }
 
                 // Blur controls
-                let mut blur_clicked = false;
-                let mut new_sigma = self.blur_sigma;
                 ui.horizontal(|ui| {
                     ui.label("Blur σ:");
-                    ui.add(egui::DragValue::new(&mut new_sigma).speed(0.1));
-                    blur_clicked = ui.button("Apply Blur").clicked();
+                    ui.add(egui::DragValue::new(&mut self.blur_sigma).speed(0.1));
+                    if ui.button("Apply Blur").clicked() {
+                        self.pending_operation = Some(ImageOperation::Blur);
+                    }
                 });
-                
-                if blur_clicked {
-                    self.blur_sigma = new_sigma;
-                    self.image = Some(img.blur(self.blur_sigma));
-                }
 
                 // Grayscale
                 if ui.button("Convert to Grayscale").clicked() {
-                    self.image = Some(img.grayscale());
+                    self.pending_operation = Some(ImageOperation::Grayscale);
                 }
 
                 // Save
@@ -115,7 +121,7 @@ fn main() {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let _ = eframe::run_native(
         "Rust Image Processor",
         options,
         Box::new(|_cc| Ok(Box::<ImageProcessor>::default())),
