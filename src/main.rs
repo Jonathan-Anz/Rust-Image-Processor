@@ -1,7 +1,7 @@
+use eframe::egui;
+use egui::{ColorImage, Image};
 use image::{self, DynamicImage, ImageFormat};
 use std::path::PathBuf;
-use eframe::egui;
-use egui::ColorImage;
 
 pub struct ImageProcessor {
     image: Option<DynamicImage>,
@@ -11,15 +11,19 @@ pub struct ImageProcessor {
     hue_rotation: i32,
     blur_sigma: f32,
     pending_operation: Option<ImageOperation>,
+    history: Vec<DynamicImage>,
+    redo: Vec<DynamicImage>,
     texture: Option<egui::TextureHandle>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum ImageOperation {
     Resize,
     HueRotate,
     Blur,
     Grayscale,
+    Undo,
+    Redo,
 }
 
 impl Default for ImageProcessor {
@@ -32,6 +36,8 @@ impl Default for ImageProcessor {
             hue_rotation: 90,
             blur_sigma: 2.0,
             pending_operation: None,
+            history: vec![],
+            redo: vec![],
             texture: None,
         }
     }
@@ -44,18 +50,11 @@ impl ImageProcessor {
             let size = [img.width() as usize, img.height() as usize];
             let image_buffer = img.to_rgba8();
             let pixels = image_buffer.as_flat_samples();
-            
-            let color_image = ColorImage::from_rgba_unmultiplied(
-                size,
-                pixels.as_slice(),
-            );
+
+            let color_image = ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
 
             // Create or update the texture
-            self.texture = Some(ctx.load_texture(
-                "image-preview",
-                color_image,
-                Default::default()
-            ));
+            self.texture = Some(ctx.load_texture("image-preview", color_image, Default::default()));
         } else {
             self.texture = None;
         }
@@ -67,6 +66,10 @@ impl eframe::App for ImageProcessor {
         // Process any pending operations first
         if let Some(op) = self.pending_operation.take() {
             if let Some(img) = self.image.take() {
+                if  op != ImageOperation::Undo {
+                    self.history.push(img.clone());
+                }
+
                 self.image = Some(match op {
                     ImageOperation::Resize => img.resize_exact(
                         self.resize_width,
@@ -76,6 +79,21 @@ impl eframe::App for ImageProcessor {
                     ImageOperation::HueRotate => img.huerotate(self.hue_rotation),
                     ImageOperation::Blur => img.blur(self.blur_sigma),
                     ImageOperation::Grayscale => img.grayscale(),
+                    ImageOperation::Undo => {
+                        if let Some(prev) = self.history.pop() {
+                            self.redo.push(img.clone());
+                            prev
+                        } else {
+                            img.clone()
+                        }
+                    }
+                    ImageOperation::Redo => {
+                        if let Some(prev) = self.redo.pop() {
+                            prev
+                        } else {
+                            img.clone()
+                        }
+                    }
                 });
                 self.update_texture(ctx); // Update texture after modification
             }
@@ -89,8 +107,9 @@ impl eframe::App for ImageProcessor {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
                     match image::open(&path) {
                         Ok(img) => {
-                            self.image = Some(img);
+                            self.image = Some(img.clone());
                             self.image_path = Some(path);
+                            self.history.push(img.clone());
                             self.update_texture(ctx); // Update texture after loading
                         }
                         Err(e) => {
@@ -102,20 +121,18 @@ impl eframe::App for ImageProcessor {
 
             if let Some(_img) = &self.image {
                 ui.label("Image loaded.");
-                
+
                 // Show image preview
                 if let Some(texture) = &self.texture {
                     // Show the image with a max size to prevent UI overflow
                     let max_width = ui.available_width() - 20.0;
                     let max_height = 300.0;
-                    
+
                     let texture_size = texture.size();
-                    
-                    let mut desired_size = egui::vec2(
-                        texture_size[0] as f32,
-                        texture_size[1] as f32
-                    );
-                    
+
+                    let mut desired_size =
+                        egui::vec2(texture_size[0] as f32, texture_size[1] as f32);
+
                     // Maintain aspect ratio while fitting within bounds
                     let ratio = desired_size.x / desired_size.y;
                     if desired_size.x > max_width {
@@ -126,10 +143,10 @@ impl eframe::App for ImageProcessor {
                         desired_size.y = max_height;
                         desired_size.x = max_height * ratio;
                     }
-                    
+
                     ui.image(texture);
                 }
-                
+
                 // Resize controls
                 ui.horizontal(|ui| {
                     ui.label("Width:");
@@ -164,13 +181,25 @@ impl eframe::App for ImageProcessor {
                     self.pending_operation = Some(ImageOperation::Grayscale);
                 }
 
+                // Undo controls
+                if ui.button("Undo").clicked() {
+                    self.pending_operation = Some(ImageOperation::Undo);
+                }
+
+                // Redo controls
+                if ui.button("Redo").clicked() {
+                    self.pending_operation = Some(ImageOperation::Redo);
+                }
+
                 // Save controls
                 if ui.button("Save Output").clicked() {
                     if let Some(path) = &self.image_path {
                         let mut save_path = path.clone();
                         save_path.set_file_name("output_preview.png");
                         if let Some(img_to_save) = &self.image {
-                            if let Err(e) = img_to_save.save_with_format(&save_path, ImageFormat::Png) {
+                            if let Err(e) =
+                                img_to_save.save_with_format(&save_path, ImageFormat::Png)
+                            {
                                 eprintln!("Failed to save image: {e}");
                             } else {
                                 println!("Image saved to {}", save_path.display());
