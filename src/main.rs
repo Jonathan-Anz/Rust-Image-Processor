@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{ColorImage, Image};
+use egui::ColorImage;
 use image::{self, DynamicImage, ImageFormat};
 use std::path::PathBuf;
 
@@ -10,6 +10,8 @@ pub struct ImageProcessor {
     resize_height: u32,
     hue_rotation: i32,
     blur_sigma: f32,
+    brightness:i32,
+    contrast: f32,
     pending_operation: Option<ImageOperation>,
     history: Vec<DynamicImage>,
     redo: Vec<DynamicImage>,
@@ -22,6 +24,8 @@ enum ImageOperation {
     HueRotate,
     Blur,
     Grayscale,
+    Brightness,
+    Contrast,
     Undo,
     Redo,
 }
@@ -35,6 +39,8 @@ impl Default for ImageProcessor {
             resize_height: 100,
             hue_rotation: 90,
             blur_sigma: 2.0,
+            brightness: 0,
+            contrast: 1.0,
             pending_operation: None,
             history: vec![],
             redo: vec![],
@@ -44,6 +50,7 @@ impl Default for ImageProcessor {
 }
 
 impl ImageProcessor {
+    const MAX_HISTORY: usize = 10;
     fn update_texture(&mut self, ctx: &egui::Context) {
         if let Some(img) = &self.image {
             // Convert the DynamicImage to a ColorImage that egui can use
@@ -62,11 +69,17 @@ impl ImageProcessor {
 }
 
 impl eframe::App for ImageProcessor {
+    
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Process any pending operations first
         if let Some(op) = self.pending_operation.take() {
             if let Some(img) = self.image.take() {
+                // keep history of NEW operations
                 if  op != ImageOperation::Undo {
+                    // limit the operations kept
+                    if self.history.len() >= Self::MAX_HISTORY{
+                        self.history.remove(0);
+                    }
                     self.history.push(img.clone());
                 }
 
@@ -79,8 +92,14 @@ impl eframe::App for ImageProcessor {
                     ImageOperation::HueRotate => img.huerotate(self.hue_rotation),
                     ImageOperation::Blur => img.blur(self.blur_sigma),
                     ImageOperation::Grayscale => img.grayscale(),
+                    ImageOperation::Brightness => img.brighten(self.brightness),
+                    ImageOperation::Contrast => img.adjust_contrast(self.contrast),
                     ImageOperation::Undo => {
+                        // try to pop the last operation
                         if let Some(prev) = self.history.pop() {
+                            if self.redo.len() >= Self::MAX_HISTORY{
+                                self.redo.remove(0);
+                            }
                             self.redo.push(img.clone());
                             prev
                         } else {
@@ -88,6 +107,7 @@ impl eframe::App for ImageProcessor {
                         }
                     }
                     ImageOperation::Redo => {
+                        // try to pop the last undo operation
                         if let Some(prev) = self.redo.pop() {
                             prev
                         } else {
@@ -99,6 +119,22 @@ impl eframe::App for ImageProcessor {
             }
         }
 
+        egui::TopBottomPanel::top("top_bar").show(ctx,|ui|{
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui|{
+                // Undo controls 
+                if ui.button("Undo").clicked() {
+                    self.pending_operation = Some(ImageOperation::Undo);
+                }
+                // Redo controls
+                if ui.button("Redo").clicked() {
+                    self.pending_operation = Some(ImageOperation::Redo);
+                }
+
+            });
+        }); //end top panel
+
+
+        
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Rust Image Processor");
 
@@ -181,15 +217,23 @@ impl eframe::App for ImageProcessor {
                     self.pending_operation = Some(ImageOperation::Grayscale);
                 }
 
-                // Undo controls
-                if ui.button("Undo").clicked() {
-                    self.pending_operation = Some(ImageOperation::Undo);
-                }
+                // Exposure controls
+                ui.horizontal(|ui|{
+                    ui.label("Brightness:");
+                    ui.add(egui::DragValue::new(&mut self.brightness).speed(1.0).range(-100..=100));
+                    if ui.button("Apply Brightness").clicked() {
+                        self.pending_operation = Some(ImageOperation::Brightness);
+                    }
+                });
 
-                // Redo controls
-                if ui.button("Redo").clicked() {
-                    self.pending_operation = Some(ImageOperation::Redo);
-                }
+                // Contrast controls
+                ui.horizontal(|ui| {
+                    ui.label("Contrast:");
+                    ui.add(egui::DragValue::new(&mut self.contrast).speed(0.1).range(-100.0..=100.0));
+                    if ui.button("Apply Contrast").clicked() {
+                        self.pending_operation = Some(ImageOperation::Contrast);
+                    }
+                });
 
                 // Save controls
                 if ui.button("Save Output").clicked() {
