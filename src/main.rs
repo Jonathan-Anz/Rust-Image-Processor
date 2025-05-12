@@ -1,8 +1,7 @@
-use image::{self, DynamicImage, ImageFormat, ImageBuffer, Rgba};
+use image::{self, DynamicImage, ImageFormat};
 use std::path::PathBuf;
 use eframe::egui;
 use egui::ColorImage;
-use std::sync::Arc;
 
 pub struct ImageProcessor {
     image: Option<DynamicImage>,
@@ -175,7 +174,7 @@ impl eframe::App for ImageProcessor {
 
 fn main() {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([600.0, 500.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 700.0]),
         ..Default::default()
     };
 
