@@ -6,9 +6,10 @@ use egui::ColorImage;
 pub struct ImageProcessor {
     image: Option<DynamicImage>,
     image_path: Option<PathBuf>,
-    blur_sigma: f32,
     resize_width: u32,
     resize_height: u32,
+    hue_rotation: i32,
+    blur_sigma: f32,
     pending_operation: Option<ImageOperation>,
     texture: Option<egui::TextureHandle>,
 }
@@ -16,6 +17,7 @@ pub struct ImageProcessor {
 #[derive(Debug)]
 enum ImageOperation {
     Resize,
+    HueRotate,
     Blur,
     Grayscale,
 }
@@ -25,9 +27,10 @@ impl Default for ImageProcessor {
         Self {
             image: None,
             image_path: None,
-            blur_sigma: 2.0,
             resize_width: 100,
             resize_height: 100,
+            hue_rotation: 90,
+            blur_sigma: 2.0,
             pending_operation: None,
             texture: None,
         }
@@ -70,6 +73,7 @@ impl eframe::App for ImageProcessor {
                         self.resize_height,
                         image::imageops::FilterType::Lanczos3,
                     ),
+                    ImageOperation::HueRotate => img.huerotate(self.hue_rotation),
                     ImageOperation::Blur => img.blur(self.blur_sigma),
                     ImageOperation::Grayscale => img.grayscale(),
                 });
@@ -137,21 +141,30 @@ impl eframe::App for ImageProcessor {
                     }
                 });
 
+                // Hue rotation controls
+                ui.horizontal(|ui| {
+                    ui.label("Hue Rotation Degrees:");
+                    ui.add(egui::DragValue::new(&mut self.hue_rotation).speed(1));
+                    if ui.button("Rotate").clicked() {
+                        self.pending_operation = Some(ImageOperation::HueRotate);
+                    }
+                });
+
                 // Blur controls
                 ui.horizontal(|ui| {
-                    ui.label("Blur σ:");
+                    ui.label("Blur Sigma:");
                     ui.add(egui::DragValue::new(&mut self.blur_sigma).speed(0.1));
                     if ui.button("Apply Blur").clicked() {
                         self.pending_operation = Some(ImageOperation::Blur);
                     }
                 });
 
-                // Grayscale
+                // Grayscale controls
                 if ui.button("Convert to Grayscale").clicked() {
                     self.pending_operation = Some(ImageOperation::Grayscale);
                 }
 
-                // Save
+                // Save controls
                 if ui.button("Save Output").clicked() {
                     if let Some(path) = &self.image_path {
                         let mut save_path = path.clone();
